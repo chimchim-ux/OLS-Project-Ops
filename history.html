@@ -1,0 +1,52 @@
+<div class="page" id="page-history">
+  <div class="topbar">
+    <div><div class="tb-title">History</div><div class="tb-sub">Last 50 actions — newest first</div></div>
+    <div class="tb-right">
+      <div class="sel-wrap"><select class="filter-sel" id="histUserFilter" onchange="renderHistory()" style="min-width:100px;">
+        <option value="">All users</option>
+      </select></div>
+      <button class="icon-btn" onclick="refreshHistory()"><i class="ti ti-refresh"></i></button>
+    </div>
+  </div>
+  <div class="page-body" id="histBody"></div>
+</div>
+
+<script>
+function renderHistory() {
+  var userFilter = document.getElementById('histUserFilter').value;
+
+  // Populate user filter options from history
+  var users = [];
+  state.history.forEach(function(h) { if (h.userName && !users.includes(h.userName)) users.push(h.userName); });
+  var sel = document.getElementById('histUserFilter');
+  var current = sel.value;
+  sel.innerHTML = '<option value="">All users</option>' + users.map(function(u){ return '<option'+(u===current?' selected':'')+'>'+u+'</option>'; }).join('');
+
+  var items = state.history.filter(function(h) {
+    if (userFilter && h.userName !== userFilter) return false;
+    return true;
+  });
+
+  var body = document.getElementById('histBody');
+  if (!items.length) { body.innerHTML = '<div style="color:var(--muted);padding:20px 0;font-size:12px;">No history entries.</div>'; return; }
+
+  body.innerHTML = '<table class="data-table">'
+    + '<thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Type</th><th>Item ID</th><th>Client</th><th>Summary</th></tr></thead>'
+    + '<tbody>'
+    + items.map(function(h) {
+        var ts = h.timestamp ? h.timestamp.replace('T',' ').replace(/\+.*$/,'').slice(0,16) + ' WIB' : '—';
+        return '<tr>'
+          + '<td class="td-mono td-muted">' + ts + '</td>'
+          + '<td class="td-primary">' + (h.userName||'—') + '</td>'
+          + '<td>' + utils.actionBadge(h.action) + '</td>'
+          + '<td class="td-muted">' + (h.type||'—') + '</td>'
+          + '<td class="td-mono td-muted">' + (h.itemId||'—') + '</td>'
+          + '<td class="td-muted">' + (h.client||'—') + '</td>'
+          + '<td class="td-wrap">' + (h.summary||'—') + '</td>'
+          + '</tr>';
+      }).join('')
+    + '</tbody></table>';
+}
+
+function refreshHistory() { state.refresh(function(){ renderHistory(); utils.toast('Refreshed.','success'); }); }
+</script>

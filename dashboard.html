@@ -1,0 +1,153 @@
+<div class="page" id="page-dashboard">
+  <div class="topbar">
+    <div><div class="tb-title">Dashboard</div><div class="tb-sub" id="dashDate">Portfolio overview</div></div>
+    <div class="tb-right">
+      <div class="sync-badge"><span class="sync-dot"></span><span id="syncLabel">Loading…</span></div>
+      <button class="icon-btn" onclick="refreshDashboard()"><i class="ti ti-refresh"></i></button>
+    </div>
+  </div>
+  <div class="page-body">
+
+    <!-- KPI CARDS -->
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-label">Active Projects</div><div class="kpi-val" id="kpiProjects">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Active Operations</div><div class="kpi-val" id="kpiOps">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Open Tenders</div><div class="kpi-val" id="kpiTenders">—</div></div>
+      <div class="kpi-card kpi-blocked"><div class="kpi-label">Blocked Items</div><div class="kpi-val" id="kpiBlocked">—</div></div>
+    </div>
+
+    <!-- PORTFOLIO HEALTH + TENDER PIPELINE -->
+    <div class="dash-row">
+      <div class="dash-card">
+        <div class="dash-card-title">Portfolio Health</div>
+        <div class="donut-wrap">
+          <svg id="donutSvg" width="88" height="88" viewBox="0 0 88 88" style="flex-shrink:0;">
+            <circle cx="44" cy="44" r="34" fill="none" stroke="#1E1E1E" stroke-width="14"/>
+            <circle id="donutOnTrack" cx="44" cy="44" r="34" fill="none" stroke="#8BC34A" stroke-width="14" stroke-dasharray="0 214" transform="rotate(-90 44 44)"/>
+            <circle id="donutWaiting" cx="44" cy="44" r="34" fill="none" stroke="#FFA726" stroke-width="14" stroke-dasharray="0 214" transform="rotate(-90 44 44)"/>
+            <circle id="donutBlocked" cx="44" cy="44" r="34" fill="none" stroke="#E05252" stroke-width="14" stroke-dasharray="0 214" transform="rotate(-90 44 44)"/>
+            <text id="donutTotal" x="44" y="48" text-anchor="middle" fill="#fff" font-size="15" font-weight="700" font-family="IBM Plex Mono,monospace">0</text>
+          </svg>
+          <div class="donut-legend">
+            <div class="legend-row"><span class="legend-dot" style="background:#8BC34A"></span><span class="legend-lbl">On Track</span><span class="legend-cnt" id="legOnTrack">0</span><span class="legend-pct" id="legOnTrackPct"></span></div>
+            <div class="legend-row"><span class="legend-dot" style="background:#FFA726"></span><span class="legend-lbl">Waiting</span><span class="legend-cnt" id="legWaiting">0</span><span class="legend-pct" id="legWaitingPct"></span></div>
+            <div class="legend-row"><span class="legend-dot" style="background:#E05252"></span><span class="legend-lbl">Blocked</span><span class="legend-cnt" id="legBlocked">0</span><span class="legend-pct" id="legBlockedPct"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="dash-card">
+        <div style="display:flex;align-items:center;margin-bottom:14px;">
+          <div class="dash-card-title" style="margin-bottom:0;">Tender Pipeline</div>
+          <div class="ttog">
+            <button class="ptog" id="togMonth" onclick="switchPipelinePeriod('month',this)">Month</button>
+            <button class="ptog active" id="togYear"  onclick="switchPipelinePeriod('year',this)">Year</button>
+          </div>
+        </div>
+        <div class="tender-tiles" id="tenderTiles">
+          <div class="tt"><div class="tt-count" id="ttUpcoming" style="color:#7A9BB5;">0</div><div class="tt-lbl">Upcoming</div></div>
+          <div class="tt"><div class="tt-count" id="ttSubmitted" style="color:#00B4D8;">0</div><div class="tt-lbl">Submitted</div></div>
+          <div class="tt"><div class="tt-count" id="ttNegotiating" style="color:#FFA726;">0</div><div class="tt-lbl">Negotiating</div></div>
+          <div class="tt"><div class="tt-count" id="ttWon" style="color:#8BC34A;">0</div><div class="tt-lbl">Won</div></div>
+          <div class="tt"><div class="tt-count" id="ttLost" style="color:#E05252;">0</div><div class="tt-lbl">Lost</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THIS WEEK'S FOCUS -->
+    <div class="dash-card" style="margin-bottom:0;">
+      <div class="dash-card-title">This Week's Focus</div>
+      <div class="focus-grid" id="focusGrid"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function renderDashboard() {
+  // KPI
+  document.getElementById('kpiProjects').textContent = state.activeProjects();
+  document.getElementById('kpiOps').textContent      = state.activeOps();
+  document.getElementById('kpiTenders').textContent  = state.openTenders();
+  document.getElementById('kpiBlocked').textContent  = state.blockedItems();
+
+  // Date
+  var now = new Date();
+  document.getElementById('dashDate').textContent = 'Portfolio overview — ' + now.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
+  document.getElementById('syncLabel').textContent = 'Synced just now · ' + now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) + ', ' + now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) + ' WIB';
+
+  // Donut
+  var h = state.portfolioHealth();
+  var circ = 2 * Math.PI * 34; // ≈ 213.6
+  var onT  = h.total ? (h.onTrack / h.total) * circ : 0;
+  var wait = h.total ? (h.waiting / h.total) * circ : 0;
+  var blk  = h.total ? (h.blocked / h.total) * circ : 0;
+  document.getElementById('donutOnTrack').setAttribute('stroke-dasharray', onT + ' ' + (circ - onT));
+  document.getElementById('donutWaiting').setAttribute('stroke-dasharray', wait + ' ' + (circ - wait));
+  document.getElementById('donutWaiting').setAttribute('stroke-dashoffset', -onT);
+  document.getElementById('donutBlocked').setAttribute('stroke-dasharray', blk + ' ' + (circ - blk));
+  document.getElementById('donutBlocked').setAttribute('stroke-dashoffset', -(onT + wait));
+  document.getElementById('donutTotal').textContent = h.total;
+  document.getElementById('legOnTrack').textContent = h.onTrack;
+  document.getElementById('legWaiting').textContent = h.waiting;
+  document.getElementById('legBlocked').textContent = h.blocked;
+  document.getElementById('legOnTrackPct').textContent = h.total ? Math.round(h.onTrack/h.total*100)+'%' : '';
+  document.getElementById('legWaitingPct').textContent = h.total ? Math.round(h.waiting/h.total*100)+'%' : '';
+  document.getElementById('legBlockedPct').textContent = h.total ? Math.round(h.blocked/h.total*100)+'%' : '';
+
+  // Pipeline
+  renderPipeline('year');
+
+  // Focus
+  renderFocus();
+}
+
+function renderPipeline(period) {
+  var c = state.tenderPipeline(period);
+  document.getElementById('ttUpcoming').textContent   = c.Upcoming;
+  document.getElementById('ttSubmitted').textContent  = c.Submitted;
+  document.getElementById('ttNegotiating').textContent= c.Negotiating;
+  document.getElementById('ttWon').textContent        = c.Won;
+  document.getElementById('ttLost').textContent       = c.Lost;
+}
+
+function switchPipelinePeriod(period, btn) {
+  document.querySelectorAll('.ptog').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  renderPipeline(period);
+}
+
+function renderFocus() {
+  var items = state.focus();
+  var grid  = document.getElementById('focusGrid');
+  if (!items.length) { grid.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;">No urgent items this week.</div>'; return; }
+  grid.innerHTML = items.map(function(item) {
+    var e  = item.entity;
+    var dl = item.milestone ? utils.shortDate(item.milestone.deadline) + ' · ' + item.milestone.label
+           : (e.deadline ? utils.shortDate(e.deadline) + (utils.daysUntil(e.deadline) !== null ? ' · ' + (utils.daysUntil(e.deadline) >= 0 ? '+' : '') + utils.daysUntil(e.deadline) + 'd' : '') : e.status);
+    return '<div class="focus-card">'
+      + '<div class="focus-top">' + utils.entityBadge(item.type) + '<span class="focus-dl">' + dl + '</span></div>'
+      + '<div class="focus-ws">' + (e.workstream || e.client) + '</div>'
+      + '<div class="focus-client">' + e.client + ' · ' + (e.service || '') + '</div>'
+      + (e.estRevenue ? '<div class="focus-rev">' + utils.formatIDR(e.estRevenue) + '</div>' : '')
+      + '</div>';
+  }).join('');
+}
+
+function refreshDashboard() {
+  state.refresh(function(){ renderDashboard(); utils.toast('Refreshed.','success'); });
+}
+
+function renderCurrentPage() {
+  var pages = ['dashboard','projects','operations','tenders','report','history'];
+  pages.forEach(function(p){
+    var el = document.getElementById('page-'+p);
+    if (el && el.classList.contains('active')) {
+      if (p==='dashboard')   renderDashboard();
+      if (p==='projects')    renderProjects();
+      if (p==='operations')  renderOperations();
+      if (p==='tenders')     renderTenders();
+      if (p==='history')     renderHistory();
+    }
+  });
+}
+</script>

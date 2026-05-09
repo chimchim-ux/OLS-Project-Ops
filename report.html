@@ -1,0 +1,122 @@
+<div class="page" id="page-report">
+  <div class="topbar">
+    <div><div class="tb-title">Weekly Report</div><div class="tb-sub" id="reportWeekLabel">Week generator</div></div>
+    <div class="tb-right">
+      <button class="btn-export" data-role="admin" onclick="generateReport()"><i class="ti ti-refresh"></i>Generate</button>
+      <button class="btn-export" onclick="exportReport()" style="margin-left:6px;background:var(--surface2);color:var(--cyan);border:1px solid var(--cyan);"><i class="ti ti-download"></i>Export .txt</button>
+    </div>
+  </div>
+  <div class="page-body">
+    <div class="rp-howto">
+      <strong>How it works:</strong> "Last Week" is auto-filled from what you entered as "This Week" in the previous session. Click Generate to populate from live data, then fill in "This Week" updates and Export.
+    </div>
+
+    <div class="sec-label">Projects &amp; Operations</div>
+    <table class="rp-table" id="rpProjOpsTable">
+      <thead><tr><th class="th-meta">Client</th><th class="th-meta">Workstream</th><th class="th-lw">Last Week</th><th class="th-tw">This Week</th></tr></thead>
+      <tbody id="rpProjOpsBody">
+        <tr class="rdr"><td class="rc1" colspan="4" style="color:var(--muted);font-weight:400;">Click Generate to load data…</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sec-label">Tenders</div>
+    <table class="rp-table" id="rpTenderTable">
+      <thead><tr><th class="th-meta">Client</th><th class="th-meta">Stage / Activity</th><th class="th-lw">Last Week</th><th class="th-tw">This Week</th></tr></thead>
+      <tbody id="rpTenderBody">
+        <tr class="rdr"><td class="rc1" colspan="4" style="color:var(--muted);font-weight:400;">Click Generate to load data…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function setReportWeek() {
+  var now = new Date();
+  var day = now.getDay(); // 0=Sun
+  var mon = new Date(now); mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+  var fri = new Date(mon); fri.setDate(mon.getDate() + 4);
+  var fmt = function(d){ return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); };
+  document.getElementById('reportWeekLabel').textContent = 'Week of ' + fmt(mon) + ' – ' + fmt(fri);
+})();
+
+function generateReport() {
+  // Projects + Ops combined
+  var projOps = state.projects.concat(state.ops);
+  var poGroups = {};
+  var poOrder  = [];
+  projOps.forEach(function(x) {
+    if (!poGroups[x.client]) { poGroups[x.client] = []; poOrder.push(x.client); }
+    poGroups[x.client].push(x);
+  });
+
+  var poRows = '';
+  poOrder.forEach(function(client) {
+    var items = poGroups[client];
+    items.forEach(function(x, i) {
+      var lwVal = x.lastWeek || '';
+      var twVal = x.thisWeek || '';
+      poRows += '<tr class="rdr">'
+        + (i === 0 ? '<td class="rc1" rowspan="' + items.length + '">' + client + '</td>' : '')
+        + '<td class="rc2">' + x.workstream + '</td>'
+        + '<td class="rlw"><textarea>' + lwVal.replace(/</g,'&lt;') + '</textarea></td>'
+        + '<td class="rtw"><textarea placeholder="Write this week\'s update…">' + twVal.replace(/</g,'&lt;') + '</textarea></td>'
+        + '</tr>';
+    });
+  });
+  document.getElementById('rpProjOpsBody').innerHTML = poRows || '<tr class="rdr"><td class="rc1" colspan="4" style="color:var(--muted);">No data.</td></tr>';
+
+  // Tenders
+  var tRows = state.tenders.map(function(t) {
+    var nextMs = '';
+    if (t.milestones && t.milestones.length) {
+      var upcoming = t.milestones.filter(function(m){ return new Date(m.deadline) >= new Date(); });
+      upcoming.sort(function(a,b){ return new Date(a.deadline)-new Date(b.deadline); });
+      nextMs = upcoming.length ? 'Next: ' + upcoming[0].label + ' ' + utils.shortDate(upcoming[0].deadline) : 'All milestones passed.';
+    }
+    return '<tr class="rdr">'
+      + '<td class="rc1">' + t.client + '</td>'
+      + '<td class="rc2">' + (t.type||'—') + ' · ' + t.status + '</td>'
+      + '<td class="rlw"><textarea placeholder="Last week update…"></textarea></td>'
+      + '<td class="rtw"><textarea placeholder="This week update…">' + nextMs + '</textarea></td>'
+      + '</tr>';
+  }).join('');
+  document.getElementById('rpTenderBody').innerHTML = tRows || '<tr class="rdr"><td class="rc1" colspan="4" style="color:var(--muted);">No tenders.</td></tr>';
+
+  utils.toast('Report populated from live data.', 'success');
+}
+
+function exportReport() {
+  var lines = ['OLS WORK HUB — WEEKLY REPORT', document.getElementById('reportWeekLabel').textContent, ''];
+  lines.push('=== PROJECTS & OPERATIONS ===');
+  document.querySelectorAll('#rpProjOpsBody tr').forEach(function(row) {
+    var cells = row.querySelectorAll('td');
+    if (cells.length >= 4) {
+      var client = cells[0] ? cells[0].textContent.trim() : '';
+      var ws     = cells[1] ? cells[1].textContent.trim() : '';
+      var lw     = cells[2] ? cells[2].querySelector('textarea').value : '';
+      var tw     = cells[3] ? cells[3].querySelector('textarea').value : '';
+      if (client) lines.push('\n[' + client + ' — ' + ws + ']');
+      lines.push('  LAST WEEK: ' + (lw||'—'));
+      lines.push('  THIS WEEK: ' + (tw||'—'));
+    }
+  });
+  lines.push('\n=== TENDERS ===');
+  document.querySelectorAll('#rpTenderBody tr').forEach(function(row) {
+    var cells = row.querySelectorAll('td');
+    if (cells.length >= 4) {
+      var client = cells[0] ? cells[0].textContent.trim() : '';
+      var stage  = cells[1] ? cells[1].textContent.trim() : '';
+      var tw     = cells[3] ? cells[3].querySelector('textarea').value : '';
+      lines.push('\n[' + client + ' — ' + stage + ']');
+      lines.push('  THIS WEEK: ' + (tw||'—'));
+    }
+  });
+
+  var blob = new Blob([lines.join('\n')], { type:'text/plain' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'OLS_Weekly_Report_' + new Date().toISOString().slice(0,10) + '.txt';
+  a.click();
+  utils.toast('Exported.', 'success');
+}
+</script>

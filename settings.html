@@ -1,0 +1,126 @@
+<div class="page" id="page-settings" data-role="masterAdmin">
+  <div class="topbar">
+    <div><div class="tb-title">Settings</div><div class="tb-sub">App configuration · Master Admin only</div></div>
+    <div class="tb-right">
+      <button class="icon-btn" onclick="loadSettings()"><i class="ti ti-refresh"></i></button>
+    </div>
+  </div>
+  <div class="page-body">
+
+    <!-- APP CONFIG -->
+    <div class="settings-block">
+      <div class="settings-block-hd">App Configuration</div>
+      <div class="settings-row">
+        <span class="sr-label">Web App URL</span>
+        <span class="sr-val mono" id="settingWebAppUrl">—</span>
+        <span class="sr-action" onclick="editSetting('webAppUrl', document.getElementById('settingWebAppUrl').textContent)">Edit</span>
+      </div>
+      <div class="settings-row">
+        <span class="sr-label">App Version</span>
+        <span class="sr-val" id="settingAppVersion">—</span>
+      </div>
+    </div>
+
+    <!-- USER MANAGEMENT -->
+    <div class="settings-block">
+      <div class="settings-block-hd" style="display:flex;align-items:center;justify-content:space-between;">
+        User Management
+        <button class="btn-new" style="height:26px;font-size:11px;" onclick="showAddUserForm()"><i class="ti ti-plus"></i>Add User</button>
+      </div>
+      <table class="user-table" id="userTable">
+        <thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Active</th><th>Actions</th></tr></thead>
+        <tbody id="userTableBody">
+          <tr><td colspan="5" style="color:var(--muted);padding:14px 18px;font-size:12px;">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ADD USER FORM (hidden by default) -->
+    <div class="settings-block" id="addUserForm" style="display:none;">
+      <div class="settings-block-hd">Add New User</div>
+      <div class="settings-row"><span class="sr-label">Display Name</span><input id="newUserName" class="search-input" style="max-width:200px;" placeholder="e.g. RIRI"></div>
+      <div class="settings-row"><span class="sr-label">Role</span>
+        <div class="sel-wrap"><select class="filter-sel" id="newUserRole"><option value="admin">Admin</option><option value="viewer">Viewer</option></select></div>
+      </div>
+      <div class="settings-row"><span class="sr-label">Initial Code</span><input id="newUserCode" class="search-input" type="password" style="max-width:200px;" placeholder="Access code"></div>
+      <div class="settings-row">
+        <span class="sr-label"></span>
+        <button class="btn-edit-rec" onclick="addUser()" style="margin-right:8px;">Add User</button>
+        <button class="btn-cancel" onclick="document.getElementById('addUserForm').style.display='none'">Cancel</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function loadSettings() {
+  api.getSettings(function(data) {
+    if (!data || !data.success) { utils.toast('Failed to load settings.','error'); return; }
+
+    // App config
+    var s = data.settings || {};
+    document.getElementById('settingWebAppUrl').textContent  = s.webAppUrl  || '—';
+    document.getElementById('settingAppVersion').textContent = s.appVersion || '—';
+
+    // Users
+    var users = data.users || [];
+    var tbody = document.getElementById('userTableBody');
+    if (!users.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:14px 18px;font-size:12px;">No users found.</td></tr>'; return; }
+    tbody.innerHTML = users.map(function(u) {
+      var roleBadge = u.role === 'masterAdmin' ? '<span class="rb-master">Master Admin</span>' : '<span class="rb-admin">' + u.role + '</span>';
+      var activeDot = u.active ? '<span class="active-dot"></span>' : '<span style="color:var(--red);font-size:11px;">Inactive</span>';
+      var actions   = u.role === 'masterAdmin' ? '<span class="td-muted" style="font-size:11px;">—</span>'
+        : '<span class="sr-action" onclick="rotateCode(\'' + u.userId + '\',\'' + u.name + '\')" style="margin-right:10px;">Rotate Code</span>'
+          + '<span class="sr-action" style="color:var(--red);" onclick="deactivateUser(\'' + u.userId + '\',\'' + u.name + '\')">Deactivate</span>';
+      return '<tr><td class="td-mono td-muted">' + u.userId + '</td>'
+        + '<td style="font-weight:600;">' + u.name + '</td>'
+        + '<td>' + roleBadge + '</td>'
+        + '<td>' + activeDot + '</td>'
+        + '<td>' + actions + '</td></tr>';
+    }).join('');
+  });
+}
+
+function editSetting(key, currentVal) {
+  var val = prompt('New value for ' + key + ':', currentVal);
+  if (val === null) return;
+  api.updateSettings(key, val, function(data) {
+    if (data.success) { loadSettings(); utils.toast('Setting updated.','success'); }
+    else utils.toast(data.error||'Failed.','error');
+  });
+}
+
+function rotateCode(userId, name) {
+  var code = prompt('Enter new access code for ' + name + ':');
+  if (!code) return;
+  api.updateUser('rotateCode', { userId:userId, newCode:code }, function(data) {
+    if (data.success) utils.toast('Code rotated for ' + name + '.','success');
+    else utils.toast(data.error||'Failed.','error');
+  });
+}
+
+function deactivateUser(userId, name) {
+  if (!confirm('Deactivate ' + name + '? They will no longer be able to log in.')) return;
+  api.updateUser('deactivate', { userId:userId }, function(data) {
+    if (data.success) { loadSettings(); utils.toast(name + ' deactivated.','success'); }
+    else utils.toast(data.error||'Failed.','error');
+  });
+}
+
+function showAddUserForm() { document.getElementById('addUserForm').style.display = ''; }
+
+function addUser() {
+  var name = document.getElementById('newUserName').value.trim().toUpperCase();
+  var role = document.getElementById('newUserRole').value;
+  var code = document.getElementById('newUserCode').value.trim();
+  if (!name || !code) { utils.toast('Name and code are required.','error'); return; }
+  api.updateUser('add', { name:name, role:role, code:code }, function(data) {
+    if (data.success) {
+      document.getElementById('addUserForm').style.display = 'none';
+      loadSettings();
+      utils.toast('User ' + name + ' added.','success');
+    } else utils.toast(data.error||'Failed.','error');
+  });
+}
+</script>

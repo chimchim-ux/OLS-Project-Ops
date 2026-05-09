@@ -1,0 +1,101 @@
+<style>
+#page-login{background:var(--bg);display:none;align-items:center;justify-content:center;position:fixed;inset:0;z-index:100;}
+#page-login.active{display:flex;}
+.login-box{background:var(--surface);border:1px solid var(--border-s);padding:38px 42px;width:340px;}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:28px;}
+.login-logo-icon{width:36px;height:36px;background:var(--cyan);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#0A0A0A;font-family:"IBM Plex Mono",monospace;}
+.login-logo-name{font-size:16px;font-weight:600;}
+.login-logo-sub{font-size:10px;color:var(--muted);font-family:"IBM Plex Mono",monospace;}
+.login-field{margin-bottom:14px;}
+.login-field label{font-size:11px;color:var(--muted);display:block;margin-bottom:6px;}
+.login-input{width:100%;background:rgba(255,255,255,.06);border:1px solid var(--border-s);padding:0 12px;height:38px;color:#fff;font-size:13px;}
+.login-input::placeholder{color:rgba(255,255,255,.2);}
+.login-btn{width:100%;background:var(--cyan);border:none;height:38px;font-size:13px;font-weight:600;color:#0A0A0A;cursor:pointer;margin-top:4px;letter-spacing:.02em;}
+.login-err{font-size:11px;color:var(--red);margin-top:10px;display:none;}
+</style>
+
+<div id="page-login" class="active">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-logo-icon">OLS</div>
+      <div>
+        <div class="login-logo-name">Work Hub</div>
+        <div class="login-logo-sub">OLM umbrella</div>
+      </div>
+    </div>
+    <div class="login-field">
+      <label>Name</label>
+      <input class="login-input" id="loginName" type="text" placeholder="Select your name…" list="userList" autocomplete="username">
+      <datalist id="userList"></datalist>
+    </div>
+    <div class="login-field">
+      <label>Access Code</label>
+      <input class="login-input" id="loginCode" type="password" placeholder="Enter access code" autocomplete="current-password">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Enter</button>
+    <div class="login-err" id="loginErr">Access code not recognised. Please try again.</div>
+  </div>
+</div>
+
+<script>
+// Populate name datalist on page load
+(function loadUsers() {
+  api.getUsers(function(data) {
+    if (!data || !data.users) return;
+    var dl = document.getElementById('userList');
+    data.users.forEach(function(name) {
+      var opt = document.createElement('option');
+      opt.value = name;
+      dl.appendChild(opt);
+    });
+  });
+})();
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && document.getElementById('page-login').classList.contains('active')) doLogin();
+});
+
+function doLogin() {
+  var name = document.getElementById('loginName').value.trim();
+  var code = document.getElementById('loginCode').value.trim();
+  var err  = document.getElementById('loginErr');
+  err.style.display = 'none';
+
+  if (!name || !code) { err.textContent = 'Please enter your name and access code.'; err.style.display = 'block'; return; }
+
+  api.login(name, code, function(data) {
+    if (data && data.success) {
+      // Store session (code kept temporarily for API calls)
+      data._code = code;
+      auth.setSession(data);
+
+      // Update sidebar
+      document.getElementById('sbAvatar').textContent = name.charAt(0);
+      document.getElementById('sbName').textContent   = name;
+      document.getElementById('sbRole').textContent   = data.role === 'masterAdmin' ? 'Master Admin' : data.role === 'admin' ? 'Admin' : 'Viewer';
+
+      // Hide login, show app
+      document.getElementById('page-login').classList.remove('active');
+      var shell = document.getElementById('appShell');
+      shell.style.display = 'flex';
+
+      // Apply role gating
+      auth.applyRoles();
+
+      // Load all data then navigate to dashboard
+      api.getData(name, code, function(d) {
+        if (d && d.success) {
+          state.load(d);
+          nav('dashboard');
+          renderDashboard();
+        } else {
+          nav('dashboard');
+        }
+      });
+    } else {
+      err.textContent = (data && data.error) || 'Access code not recognised. Please try again.';
+      err.style.display = 'block';
+    }
+  });
+}
+</script>

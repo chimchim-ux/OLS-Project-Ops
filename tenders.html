@@ -1,0 +1,110 @@
+<div class="page" id="page-tenders">
+  <div class="topbar">
+    <div><div class="tb-title">Tenders</div><div class="tb-sub">Active tenders with milestone tracking</div></div>
+    <div class="tb-right">
+      <div class="sync-badge"><span class="sync-dot"></span><span id="tndSyncLabel">Synced</span></div>
+      <button class="icon-btn" onclick="refreshTenders()"><i class="ti ti-refresh"></i></button>
+      <button class="btn-new" data-role="admin" onclick="utils.toast('New tender form — connect to sync.','success')"><i class="ti ti-plus"></i>New</button>
+    </div>
+  </div>
+  <div class="toolbar">
+    <div class="sel-wrap"><select class="filter-sel" id="tndTypeFilter" onchange="renderTenders()">
+      <option value="">All types</option><option>RFQ</option><option>RFX</option><option>Direct Negotiation</option>
+    </select></div>
+    <div class="sel-wrap"><select class="filter-sel" id="tndStatusFilter" onchange="renderTenders()">
+      <option value="">All statuses</option><option>Upcoming</option><option>Submitted</option><option>Negotiating</option><option>Won</option><option>Lost</option>
+    </select></div>
+    <div class="item-count" id="tndCount">0 tenders</div>
+  </div>
+  <div class="page-body" id="tndBody"></div>
+</div>
+
+<script>
+function renderTenders() {
+  var type   = document.getElementById('tndTypeFilter').value;
+  var status = document.getElementById('tndStatusFilter').value;
+
+  var items = state.tenders.filter(function(t) {
+    if (type   && t.type   !== type)   return false;
+    if (status && t.status !== status) return false;
+    return true;
+  });
+
+  document.getElementById('tndCount').textContent = items.length + ' tender' + (items.length!==1?'s':'');
+
+  var body = document.getElementById('tndBody');
+  if (!items.length) { body.innerHTML = '<div style="color:var(--muted);padding:20px 0;font-size:12px;">No tenders match current filters.</div>'; return; }
+
+  var statusPillMap = {
+    'Upcoming':    'pill-upcoming',
+    'Submitted':   'pill-submitted',
+    'Negotiating': 'pill-negotiating',
+    'Won':         'pill-won',
+    'Lost':        'pill-lost',
+  };
+
+  var rows = items.map(function(t) {
+    var nextMs = '';
+    if (t.milestones && t.milestones.length) {
+      var today = new Date();
+      var upcoming = t.milestones.filter(function(m){ return new Date(m.deadline) >= today; });
+      upcoming.sort(function(a,b){ return new Date(a.deadline)-new Date(b.deadline); });
+      nextMs = upcoming.length ? upcoming[0].label + ' · ' + utils.shortDate(upcoming[0].deadline) : '—';
+    }
+
+    var tenderRow = '<tr style="background:var(--surface);" onclick="openTenderModal(\'' + t.id + '\')">'
+      + '<td><div class="td-primary">' + t.client + '</div><div class="td-id">' + t.id + '</div></td>'
+      + '<td><span class="svc">' + (t.type||'—') + '</span></td>'
+      + '<td>' + utils.svcBadge(t.service) + '</td>'
+      + '<td class="td-muted">' + t.owner + '</td>'
+      + '<td>' + utils.statusPill(t.status) + '</td>'
+      + '<td class="td-rev">' + (t.estRevenue ? utils.formatIDR(t.estRevenue) : '<span class="td-muted">—</span>') + '</td>'
+      + '<td><div class="dl-wrap"><span class="dl-date">' + utils.shortDate(t.deadline) + '</span>' + utils.deadlineDelta(t.deadline) + '</div></td>'
+      + '<td class="td-muted">' + nextMs + '</td>'
+      + '<td class="td-arr"><i class="ti ti-chevron-right"></i></td>'
+      + '</tr>';
+
+    var msRows = (t.milestones || []).map(function(m) {
+      return '<tr class="ms-row"><td class="ms-lbl" colspan="9"><span class="ms-dot"></span>' + m.label + ' · ' + utils.shortDate(m.deadline) + '</td></tr>';
+    }).join('');
+
+    return tenderRow + msRows;
+  }).join('');
+
+  body.innerHTML = '<table class="data-table">'
+    + '<thead><tr><th>Client / ID</th><th>Type</th><th>Service</th><th>Owner</th><th>Status</th><th>Est. Rev</th><th>Deadline</th><th>Next Milestone</th><th></th></tr></thead>'
+    + '<tbody>' + rows + '</tbody>'
+    + '</table>';
+
+  document.getElementById('tndSyncLabel').textContent = 'Synced · ' + new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) + ' WIB';
+}
+
+function openTenderModal(id) {
+  var t = state.tenders.find(function(x){ return x.id === id; });
+  if (!t) return;
+  locks.open(id);
+  document.getElementById('mTitle').textContent = t.client + ' — ' + t.type;
+  document.getElementById('mMeta').textContent  = t.id + ' · ' + t.service;
+  document.getElementById('mOwner').textContent = t.owner;
+  document.getElementById('mStatus').innerHTML  = utils.statusPill(t.status);
+  document.getElementById('mRev').textContent   = utils.formatIDR(t.estRevenue);
+  document.getElementById('mDeadline').textContent = utils.formatDate(t.deadline);
+  var msText = (t.milestones||[]).map(function(m){ return m.label + ' · ' + utils.formatDate(m.deadline); }).join('\n');
+  document.getElementById('mThisWeek').value = msText || 'No milestones yet.';
+  document.getElementById('mLastWeek').value = '';
+  document.getElementById('mBtnDelete').style.display = auth.isMasterAdmin() ? '' : 'none';
+  document.getElementById('mBtnDelete').onclick = function(){ deleteTender(id, t.client); };
+  document.getElementById('mBtnEdit').onclick   = function(){ utils.toast('Tender edit form — wire to sync endpoint.','success'); };
+  document.getElementById('detailModal').classList.add('open');
+}
+
+function deleteTender(id, client) {
+  if (!confirm('Delete tender for "' + client + '"?')) return;
+  api.delete('tender', id, function(data) {
+    if (data.success) { closeModal(); state.refresh(function(){ renderTenders(); renderDashboard(); }); utils.toast('Deleted.','success'); }
+    else utils.toast(data.error||'Delete failed.','error');
+  });
+}
+
+function refreshTenders() { state.refresh(function(){ renderTenders(); utils.toast('Refreshed.','success'); }); }
+</script>

@@ -1,0 +1,136 @@
+<div class="page" id="page-operations">
+  <div class="topbar">
+    <div><div class="tb-title">Operations</div><div class="tb-sub">Active operations grouped by client</div></div>
+    <div class="tb-right">
+      <div class="sync-badge"><span class="sync-dot"></span><span id="opsSyncLabel">Synced</span></div>
+      <button class="icon-btn" onclick="refreshOps()"><i class="ti ti-refresh"></i></button>
+      <button class="btn-new" data-role="admin" onclick="utils.toast('New ops form — connect to sync.','success')"><i class="ti ti-plus"></i>New</button>
+    </div>
+  </div>
+  <div class="toolbar">
+    <div class="search-wrap"><i class="ti ti-search"></i><input class="search-input" id="opsSearch" type="text" placeholder="Search operations or clients…" oninput="renderOperations()"></div>
+    <div class="sel-wrap"><select class="filter-sel" id="opsSvcFilter" onchange="renderOperations()">
+      <option value="">All services</option>
+      <option>Trucking</option><option>Warehousing</option><option>Technology</option><option>Advisory</option><option>Distribution</option><option>Other</option>
+    </select></div>
+    <div class="sel-wrap"><select class="filter-sel" id="opsStatusFilter" onchange="renderOperations()">
+      <option value="">All statuses</option>
+      <option>On Track</option><option>Waiting</option><option>Blocked</option><option>Completed</option>
+    </select></div>
+    <div class="item-count" id="opsCount">0 items</div>
+  </div>
+  <div class="page-body" id="opsBody"></div>
+</div>
+
+<script>
+function renderOperations() {
+  var search = (document.getElementById('opsSearch').value || '').toLowerCase();
+  var svc    = document.getElementById('opsSvcFilter').value;
+  var status = document.getElementById('opsStatusFilter').value;
+
+  var items = state.ops.filter(function(o) {
+    if (search && !o.client.toLowerCase().includes(search) && !o.workstream.toLowerCase().includes(search)) return false;
+    if (svc    && o.service !== svc)    return false;
+    if (status && o.status  !== status) return false;
+    return true;
+  });
+
+  document.getElementById('opsCount').textContent = items.length + ' item' + (items.length !== 1 ? 's' : '');
+
+  var groups = state.groupByClient(items);
+  var body   = document.getElementById('opsBody');
+
+  if (!groups.length) { body.innerHTML = '<div style="color:var(--muted);padding:20px 0;font-size:12px;">No operations match current filters.</div>'; return; }
+
+  body.innerHTML = groups.map(function(g) {
+    var onTrack  = g.items.filter(function(x){ return x.status==='On Track'; }).length;
+    var waiting  = g.items.filter(function(x){ return x.status==='Waiting'; }).length;
+    var blocked  = g.items.filter(function(x){ return x.status==='Blocked'; }).length;
+    var totalRev = g.items.reduce(function(s,x){ return s+(x.estRevenue||0); }, 0);
+    var initials = g.client.replace(/[^A-Z]/g,'').slice(0,2) || g.client.slice(0,2).toUpperCase();
+    var pillHtml = [
+      blocked ? '<span class="pill pill-blocked"><span class="pill-dot"></span>'+blocked+' blocked</span>'  : '',
+      waiting ? '<span class="pill pill-waiting"><span class="pill-dot"></span>'+waiting+' waiting</span>'  : '',
+      onTrack ? '<span class="pill pill-ontrack"><span class="pill-dot"></span>'+onTrack+' on track</span>' : '',
+    ].filter(Boolean).join('');
+
+    var rows = g.items.map(function(o) {
+      var dlHtml = o.deadline
+        ? '<div class="dl-wrap"><span class="dl-date">' + utils.shortDate(o.deadline) + '</span>' + utils.deadlineDelta(o.deadline) + '</div>'
+        : '<span class="td-muted">Ongoing</span>';
+      var rowCls = o.status === 'Blocked' ? ' class="row-blocked"' : '';
+      return '<tr' + rowCls + ' onclick="openOpsModal(\'' + o.id + '\')">'
+        + '<td><div class="td-primary">' + o.workstream + '</div><div class="td-id">' + o.id + '</div></td>'
+        + '<td>' + utils.svcBadge(o.service) + '</td>'
+        + '<td class="td-muted">' + o.owner + '</td>'
+        + '<td>' + utils.statusPill(o.status) + '</td>'
+        + '<td class="td-wrap">' + (o.thisWeek || '—') + '</td>'
+        + '<td class="td-wrap"><span class="ops-hl">' + (o.highlight || '—') + '</span></td>'
+        + '<td class="td-rev">' + (o.estRevenue ? utils.formatIDR(o.estRevenue) : '<span class="td-muted">—</span>') + '</td>'
+        + '<td>' + dlHtml + '</td>'
+        + '<td class="td-arr"><i class="ti ti-chevron-right"></i></td>'
+        + '</tr>';
+    }).join('');
+
+    return '<div class="client-group">'
+      + '<div class="client-hdr" onclick="toggleGroup(this)">'
+      + '<i class="ti ti-chevron-down client-chev"></i>'
+      + '<div class="client-av" style="background:rgba(139,195,74,.12);color:var(--green);">' + initials + '</div>'
+      + '<div><div class="client-name">' + g.client + '</div><div class="client-sub">' + g.items.length + ' WORKSTREAM' + (g.items.length!==1?'S':'') + '</div></div>'
+      + '<div class="client-pills">' + pillHtml + '</div>'
+      + (totalRev ? '<div class="client-rev"><div class="cr-label">Est Rev</div><div class="cr-val">' + utils.formatIDR(totalRev) + '</div></div>' : '')
+      + '</div>'
+      + '<table class="data-table">'
+      + '<thead><tr><th>Workstream</th><th>Service</th><th>Owner</th><th>Status</th><th>This Week</th><th>Highlight</th><th>Est. Rev</th><th>Deadline</th><th></th></tr></thead>'
+      + '<tbody>' + rows + '</tbody>'
+      + '</table></div>';
+  }).join('');
+
+  document.getElementById('opsSyncLabel').textContent = 'Synced · ' + new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) + ' WIB';
+}
+
+function openOpsModal(id) {
+  var o = state.getById(id);
+  if (!o) return;
+  locks.open(id);
+  document.getElementById('mTitle').textContent = o.workstream;
+  document.getElementById('mMeta').textContent  = o.id + ' · ' + o.client + ' · ' + o.service;
+  document.getElementById('mOwner').textContent = o.owner;
+  document.getElementById('mStatus').innerHTML  = utils.statusPill(o.status);
+  document.getElementById('mRev').textContent   = utils.formatIDR(o.estRevenue);
+  document.getElementById('mDeadline').textContent = o.deadline ? utils.formatDate(o.deadline) : 'Ongoing';
+  document.getElementById('mThisWeek').value     = o.thisWeek  || '';
+  document.getElementById('mLastWeek').value     = o.lastWeek  || '';
+  document.getElementById('mBtnDelete').style.display = auth.isMasterAdmin() ? '' : 'none';
+  document.getElementById('mBtnDelete').onclick  = function(){ deleteOps(id, o.workstream); };
+  document.getElementById('mBtnEdit').onclick    = function(){ saveOps(o); };
+  document.getElementById('detailModal').classList.add('open');
+}
+
+function saveOps(o) {
+  var payload = {
+    id:o.id, entity:'operation', client:o.client, workstream:o.workstream,
+    service:o.service, status:o.status,
+    thisWeek:document.getElementById('mThisWeek').value,
+    deadline:o.deadline, estRevenue:o.estRevenue, updated:o.updated,
+  };
+  api.sync('operation', payload, function(data) {
+    if (data.success) {
+      closeModal(); state.refresh(function(){ renderOperations(); renderDashboard(); });
+      utils.toast('Saved.','success');
+    } else if (data.conflict) {
+      locks.storeConflict('operation', payload);
+    } else { utils.toast(data.error||'Save failed.','error'); }
+  });
+}
+
+function deleteOps(id, ws) {
+  if (!confirm('Delete "' + ws + '"?')) return;
+  api.delete('operation', id, function(data) {
+    if (data.success) { closeModal(); state.refresh(function(){ renderOperations(); renderDashboard(); }); utils.toast('Deleted.','success'); }
+    else utils.toast(data.error||'Delete failed.','error');
+  });
+}
+
+function refreshOps() { state.refresh(function(){ renderOperations(); utils.toast('Refreshed.','success'); }); }
+</script>
