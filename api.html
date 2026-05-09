@@ -5,7 +5,7 @@
 // All calls inject name+code from session automatically.
 // ============================================================
 
-var API_URL = 'PASTE_YOUR_WEB_APP_URL_HERE';
+var API_URL = 'https://script.google.com/macros/s/AKfycbzREK-f4OAp7El-Y31ReM5w8yoFMsPFTra3kL5ooHf_UYC6CQWvIZ351Clr0UuF9hVdkg/exec';
 
 var api = {
 
